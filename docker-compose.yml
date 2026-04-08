@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: founderhub-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: founderhub
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: founderhub-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/founderhub
+      - NODE_ENV=development
+    volumes:
+      - ./backend:/app
+      - /app/node_modules       # Prevent host node_modules overwriting container's
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: npx nodemon server.js
+
+  frontend:
+    image: node:20-alpine
+    container_name: founderhub-frontend
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:5000/api/v1
+      - VITE_SOCKET_URL=http://localhost:5000
+    command: sh -c "npm install && npm run dev -- --host"
+
+volumes:
+  mongo_data:
